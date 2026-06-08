@@ -443,3 +443,20 @@ def plot_reward_shaping_diagram(
         print(f"  Reward shaping diagram → {save_path}")
     plt.show()
     return fig
+
+
+if __name__ == "__main__":
+    # run_name = "example_run"
+    # csv_path = f"results/{run_name}.csv"
+
+    # # Plots auto-save to: results/plots/{run_name}/learning_curves.png
+    # plot_continuous_learning(csv_path, run_name=run_name)
+
+
+    # All functions support this pattern
+    run_name ="Track_Plot"
+    dummy_env = continuous_linear_track.ContinuousLinearTrackEnv()
+    plot_continuous_track(dummy_env, run_name=run_name)
+    
+    # 2. Test the shaping diagram
+    plot_reward_shaping_diagram(run_name=run_name)

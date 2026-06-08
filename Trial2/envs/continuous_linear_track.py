@@ -23,15 +23,16 @@ Action space (continuous, 2-dim):
   • velocity ∈ [-max_vel, +max_vel]   (default max_vel=10)
   • lick     ∈ [-1, +1]  → treated as binary: lick if > 0
 
-Reward structure:
+Reward structure (ONE-DIRECTIONAL: LEFT → RIGHT ONLY):
   • step_penalty       : -0.005  per step (keeps agent moving)
   • lick_penalty       : -0.05   per lick action anywhere
-  • water_reward       : +1.0    on correct shuttle sequence:
-       lick LEFT port  → flag set → lick RIGHT port → reward
-       (or reverse: lick RIGHT → lick LEFT → reward)
+  • water_reward       : +1.0    on correct sequence (every time LEFT then RIGHT)
   • wrong_lick_penalty : -0.02   licking at wrong port before
-                                  visiting the required one first
-                                  (optional, off by default)
+                                  visiting left first (optional, off by default)
+
+Behavioral Metrics Tracked:
+  • n_successes            : count of completed LEFT→RIGHT sequences per episode
+  • intra_trial_duration   : steps between first left lick and subsequent right lick
 
 Rationale (Ng et al. 1999; Engelhard et al. 2019):
   lick_penalty / water_reward ≈ 5 %  — in the safe shaping window
@@ -74,9 +75,9 @@ class ContinuousLinearTrackEnv(gym.Env):
         terminal_width    : float = 3.0,
         dt                : float = 1.0,
         max_steps         : int   = 500,
-        water_reward      : float = 1.0,
+        water_reward      : float = 10.0,
         step_penalty      : float = -0.005,
-        lick_penalty      : float = -0.05,
+        lick_penalty      : float = -0.005,
         wrong_lick_penalty: float = 0.0,
         render_mode       : str | None = None,
     ):
@@ -102,8 +103,8 @@ class ContinuousLinearTrackEnv(gym.Env):
 
         # ── observation: [pos_norm, vel_norm, r, g, b, lick_L, lick_R] ──────
         self.observation_space = spaces.Box(
-            low  = np.zeros(7, dtype=np.float32),
-            high = np.ones(7,  dtype=np.float32),
+            low  = np.zeros(3, dtype=np.float32),
+            high = np.ones(3,  dtype=np.float32),
             dtype= np.float32,
         )
 
@@ -112,6 +113,7 @@ class ContinuousLinearTrackEnv(gym.Env):
         self._vel          = 0.0
         self._licked_left  = False
         self._licked_right = False
+        self._shuttle_completed = False  # track if shuttle completed (for one-time reward)
         self._steps        = 0
         self._trajectory   : list[float] = []
         self._lick_events  : list[tuple[float, str]] = []  # (pos, 'left'|'right'|'body')
@@ -137,11 +139,8 @@ class ContinuousLinearTrackEnv(gym.Env):
     # ── observation builder ───────────────────────────────────────────────────
 
     def _build_obs(self) -> np.ndarray:
-        colour = self._get_colour()
         return np.array([
             np.clip(self._pos / self.L, 0.0, 1.0),                    # position
-            np.clip((self._vel + self.max_vel) / (2 * self.max_vel), 0.0, 1.0),  # velocity
-            colour[0], colour[1], colour[2],                           # RGB
             float(self._licked_left),
             float(self._licked_right),
         ], dtype=np.float32)
@@ -161,6 +160,9 @@ class ContinuousLinearTrackEnv(gym.Env):
         self._steps        = 0
         self._trajectory   = [self._pos]
         self._lick_events  = []
+        self._step_left_first = None
+        self._step_right_after_left = None
+        self._n_successes = 0
 
         return self._build_obs(), {}
 
@@ -180,6 +182,7 @@ class ContinuousLinearTrackEnv(gym.Env):
         reward     = self.step_penalty
         terminated = False
         lick_zone  = None
+        intra_trial_duration_this_step = None
 
         # ── lick logic ────────────────────────────────────────────────────────
         if do_lick:
@@ -187,45 +190,51 @@ class ContinuousLinearTrackEnv(gym.Env):
 
             if self._in_left_zone():
                 lick_zone = "left"
-                self._lick_events.append((self._pos, "left"))
-
-                if not self._licked_right:
-                    # correct first-port lick (or repeat)
+                self._lick_events.append((self._steps, "left"))
+                
+                if not self._licked_left:
+                    # first lick to left port
                     self._licked_left = True
-                else:
-                    # already visited right, now licking left → completes shuttle
-                    reward     += self.water_reward
-                    terminated  = True
+                    self._step_left_first = self._steps
 
             elif self._in_right_zone():
                 lick_zone = "right"
-                self._lick_events.append((self._pos, "right"))
-
-                if not self._licked_left:
+                self._lick_events.append((self._steps, "right"))
+                
+                if self._licked_left and not self._licked_right:
+                    # first lick to right port after left (completes left→right)
                     self._licked_right = True
-                else:
-                    # visited left first, now licking right → completes shuttle
+                    self._step_right_after_left = self._steps
+                    # Calculate duration before resetting
+                    intra_trial_duration_this_step = self._step_right_after_left - self._step_left_first
                     reward     += self.water_reward
-                    terminated  = True
+                    self._n_successes += 1
+                    # Reset flags to allow multiple left→right sequences
+                    self._licked_left = False
+                    self._licked_right = False
+                    self._step_left_first = None
+                    self._step_right_after_left = None
 
             else:
                 lick_zone = "body"
-                self._lick_events.append((self._pos, "body"))
+                self._lick_events.append((self._steps, "body"))
                 reward += self.wrong_lick_pen   # licking on the track body
 
         truncated = self._steps >= self.max_steps
 
         info = {
-            "pos"           : self._pos,
-            "vel"           : self._vel,
-            "licked_left"   : self._licked_left,
-            "licked_right"  : self._licked_right,
-            "lick_zone"     : lick_zone,
-            "steps"         : self._steps,
-            "in_left_zone"  : self._in_left_zone(),
-            "in_right_zone" : self._in_right_zone(),
-            "trajectory"    : list(self._trajectory),
-            "lick_events"   : list(self._lick_events),
+            "pos"              : self._pos,
+            "vel"              : self._vel,
+            "licked_left"      : self._licked_left,
+            "licked_right"     : self._licked_right,
+            "lick_zone"        : lick_zone,
+            "steps"            : self._steps,
+            "n_successes"      : self._n_successes,
+            "intra_trial_duration" : intra_trial_duration_this_step,  # steps between left and right licks
+            "in_left_zone"     : self._in_left_zone(),
+            "in_right_zone"    : self._in_right_zone(),
+            "trajectory"       : list(self._trajectory),
+            "lick_events"      : list(self._lick_events),
         }
 
         if self.render_mode == "ansi":
@@ -280,4 +289,4 @@ class ContinuousLinearTrackEnv(gym.Env):
 
     @property
     def obs_labels(self):
-        return ["pos_norm", "vel_norm", "R", "G", "B", "licked_L", "licked_R"]
+        return ["pos_norm", "licked_L", "licked_R"]
