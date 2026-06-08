@@ -72,7 +72,7 @@ class ContinuousLinearTrackEnv(gym.Env):
         self,
         track_length      : float = 120.0,
         max_vel           : float = 10.0,
-        terminal_width    : float = 3.0,
+        terminal_width    : float = 1.0,
         dt                : float = 1.0,
         max_steps         : int   = 500,
         water_reward      : float = 10.0,
@@ -117,7 +117,7 @@ class ContinuousLinearTrackEnv(gym.Env):
         self._steps        = 0
         self._trajectory   : list[float] = []
         self._lick_events  : list[tuple[float, str]] = []  # (pos, 'left'|'right'|'body')
-
+        self.tactile = 0.0  # tactile input (0.0 for left half, 1.0 for right half)
     # ── terminal zone checks ──────────────────────────────────────────────────
 
     def _in_left_zone(self)  -> bool:
@@ -243,7 +243,11 @@ class ContinuousLinearTrackEnv(gym.Env):
         return self._build_obs(), float(reward), terminated, truncated, info
 
     # ── render ────────────────────────────────────────────────────────────────
-
+    def _get_tactile(self, pos: float | None = None) -> float:
+        p = self._pos if pos is None else pos
+        # Return 0.0 for the left half, 1.0 for the right half
+        return 0.0 if p < (self.L / 2.0) else 1.0
+    
     def _render_ansi(self):
         width  = 60
         frac   = self._pos / self.L

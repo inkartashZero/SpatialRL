@@ -102,7 +102,7 @@ def plot_continuous_track(
     ]:
         ax.text(x, 0.5, label, ha="center", va="center",
                 color=col, fontsize=8, fontweight="bold")
-
+    ax.axvline(L/2, color="#4CC9F0", lw=2.0, linestyle=":", alpha=0.8, label="Tactile Boundary")
     ax.axvline(tw,   color="white", lw=1.2, linestyle="--", alpha=0.5)
     ax.axvline(L-tw, color="white", lw=1.2, linestyle="--", alpha=0.5)
 

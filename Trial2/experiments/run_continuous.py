@@ -8,8 +8,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from envs import continuous_linear_track
-from algorithms import CONTINUOUS_REGISTRY
-import algorithms.FA as FA  # Assuming FA.py is in the algorithms/ folder
+from agents import CONTINUOUS_REGISTRY
+import agents.FA as FA  # Assuming FA.py is in the algorithms/ folder
 
 DEFAULT_CONFIGS = {
     "td3": dict(
@@ -221,7 +221,7 @@ def _parse():
     p.add_argument("--episodes",       type=int,   default=3000)
     p.add_argument("--track_length",   type=float, default=120.0)
     p.add_argument("--max_vel",        type=float, default=10.0)
-    p.add_argument("--terminal_width", type=float, default=3.0)
+    p.add_argument("--terminal_width", type=float, default=1.0)
     p.add_argument("--max_steps",      type=int,   default=500)
     p.add_argument("--step_penalty",   type=float, default=-0.005)
     p.add_argument("--lick_penalty",   type=float, default=-0.005) # Defaulted to 0 for you
