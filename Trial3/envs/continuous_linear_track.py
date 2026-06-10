@@ -119,6 +119,10 @@ class ContinuousLinearTrackEnv(gym.Env):
         self._lick_events  : list[tuple[float, str]] = []  # (pos, 'left'|'right'|'body')
 
     # ── terminal zone checks ──────────────────────────────────────────────────
+    def set_phase(self, phase: str):
+        """Sets the behavioral phase: 'mapping' or 'remapping'."""
+        assert phase in ["mapping", "remapping"], f"Unknown phase: {phase}"
+        self.phase = phase
 
     def _in_left_zone(self)  -> bool:
         return self._pos <= self.terminal_width
@@ -189,31 +193,51 @@ class ContinuousLinearTrackEnv(gym.Env):
             reward += self.lick_penalty   # universal lick cost
 
             if self._in_left_zone():
+                
                 lick_zone = "left"
                 self._lick_events.append((self._steps, "left"))
                 
                 if not self._licked_left:
                     # first lick to left port
-                    self._licked_left = True
-                    self._step_left_first = self._steps
-
+                    if self.phase == "mapping":
+                        self._licked_left = True
+                        self._step_left_first = self._steps
+                    elif self.phase == "remapping":
+                        if self._licked_right:
+                            # first lick to left port after right (completes right→left)
+                            self._licked_left = True
+                            self._step_left_after_right = self._steps
+                            # Calculate duration before resetting
+                            intra_trial_duration_this_step = self._step_left_after_right - self._step_right_first
+                            reward     += self.water_reward
+                            self._n_successes += 1
+                            # Reset flags to allow multiple right→left sequences
+                            self._licked_left = False
+                            self._licked_right = False
+                            self._step_left_first = None
+                            self._step_right_after_left = None
             elif self._in_right_zone():
                 lick_zone = "right"
                 self._lick_events.append((self._steps, "right"))
                 
-                if self._licked_left and not self._licked_right:
-                    # first lick to right port after left (completes left→right)
-                    self._licked_right = True
-                    self._step_right_after_left = self._steps
-                    # Calculate duration before resetting
-                    intra_trial_duration_this_step = self._step_right_after_left - self._step_left_first
-                    reward     += self.water_reward
-                    self._n_successes += 1
-                    # Reset flags to allow multiple left→right sequences
-                    self._licked_left = False
-                    self._licked_right = False
-                    self._step_left_first = None
-                    self._step_right_after_left = None
+                if  not self._licked_right:
+                    if self.phase == "mapping" and self._licked_left:
+                        # first lick to right port after left (completes left→right)
+                        self._licked_right = True
+                        self._step_right_after_left = self._steps
+                        # Calculate duration before resetting
+                        intra_trial_duration_this_step = self._step_right_after_left - self._step_left_first
+                        reward     += self.water_reward
+                        self._n_successes += 1
+                        # Reset flags to allow multiple left→right sequences
+                        self._licked_left = False
+                        self._licked_right = False
+                        self._step_left_first = None
+                        self._step_right_after_left = None
+                    elif self.phase == "remapping":
+                        self._licked_right = True
+                        self._step_right_first = self._steps
+
 
             else:
                 lick_zone = "body"

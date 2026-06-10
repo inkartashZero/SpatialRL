@@ -1,0 +1,33 @@
+{
+  "run_name": "ppo_remapping_seed42_20260610_163707",
+  "agent": "ppo",
+  "env": "ContinuousLinearTrack",
+  "n_episodes": 3000,
+  "track_length": 120.0,
+  "max_vel": 10.0,
+  "terminal_width": 3.0,
+  "max_steps": 500,
+  "water_reward": 100.0,
+  "step_penalty": -0.005,
+  "lick_penalty": -0.005,
+  "wrong_lick_penalty": 0.0,
+  "seed": 42,
+  "config": {
+    "hidden_size": 256,
+    "lr": 0.0003,
+    "gamma": 0.99,
+    "lam": 0.95,
+    "clip_ratio": 0.2,
+    "target_kl": 0.015,
+    "ppo_epochs": 10,
+    "rollout_steps": 2048,
+    "batch_size": 64,
+    "device": "auto",
+    "max_vel": 10.0
+  },
+  "final_success_rate": 0.0,
+  "last_100_success": 0.0,
+  "elapsed_seconds": 481.4,
+  "csv_path": "results\\ppo_remapping_seed42_20260610_163707.csv",
+  "ckpt_path": "results\\ppo_remapping_seed42_20260610_163707_checkpoint"
+}
