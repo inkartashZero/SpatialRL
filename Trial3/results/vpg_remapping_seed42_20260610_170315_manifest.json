@@ -1,0 +1,27 @@
+{
+  "run_name": "vpg_remapping_seed42_20260610_170315",
+  "agent": "vpg",
+  "env": "ContinuousLinearTrack",
+  "n_episodes": 3000,
+  "track_length": 120.0,
+  "max_vel": 10.0,
+  "terminal_width": 3.0,
+  "max_steps": 500,
+  "water_reward": 100.0,
+  "step_penalty": -0.005,
+  "lick_penalty": -0.005,
+  "wrong_lick_penalty": 0.0,
+  "seed": 42,
+  "config": {
+    "hidden_size": 256,
+    "lr": 0.0003,
+    "gamma": 0.99,
+    "use_critic": true,
+    "max_vel": 10.0
+  },
+  "final_success_rate": 0.0,
+  "last_100_success": 0.0,
+  "elapsed_seconds": 233.67,
+  "csv_path": "results\\vpg_remapping_seed42_20260610_170315.csv",
+  "ckpt_path": "results\\vpg_remapping_seed42_20260610_170315_checkpoint"
+}

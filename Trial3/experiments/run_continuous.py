@@ -28,7 +28,7 @@ DEFAULT_CONFIGS = {
     "sarsa_fa": dict(lr=0.01, gamma=0.99, epsilon=0.1, n_features=200),
     "sarsa_lambda_fa": dict(lr=0.01, gamma=0.99, epsilon=0.1, lambda_=0, n_features=200),
     "ddpg": dict(hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, gamma=0.99, tau=0.005, expl_noise=0.1, batch_size=256, learn_start=1000),
-    "vpg": dict(hidden_size=256, lr=3e-4, gamma=0.99, use_critic=False), # Set use_critic=False for REINFORCE
+    "vpg": dict(hidden_size=256, lr=3e-4, gamma=0.99, use_critic=True), 
     "ppo": dict(
         hidden_size=256, lr=3e-4, gamma=0.99, lam=0.95,
         clip_ratio=0.2, target_kl=0.015, ppo_epochs=10, 
@@ -37,8 +37,8 @@ DEFAULT_CONFIGS = {
 }
 
 def run_continuous_experiment(
-    agent_name       : str   = "td3",
-    n_episodes       : int   = 500,
+    agent_name       : str   = "ppo",
+    n_episodes       : int   = 3000,
     track_length     : float = 120.0,
     max_vel          : float = 10.0,
     terminal_width   : float = 3.0,
@@ -71,9 +71,7 @@ def run_continuous_experiment(
         wrong_lick_penalty = wrong_lick_penalty,
     )
 
-    # 3. Dynamic Environment Wrapping for FA Agents
     is_discrete_fa = agent_name in ["q_fa", "sarsa_fa", "sarsa_lambda_fa"]
-    
     if is_discrete_fa:
         env = FA.DiscreteActionWrapper(env, n_vel_bins=5)
         n_actions = env.action_space.n # type: ignore
@@ -87,7 +85,6 @@ def run_continuous_experiment(
     if extra_config:
         config.update(extra_config)
 
-    # 4. Instantiate the Agent based on type
     if is_discrete_fa:
         agent = CONTINUOUS_REGISTRY[agent_name](obs_dim, n_actions, config)
     else:
@@ -97,29 +94,41 @@ def run_continuous_experiment(
 
     Path(results_dir).mkdir(parents=True, exist_ok=True)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    run_name  = f"{agent_name}_cont_seed{seed}_{timestamp}"
+    run_name  = f"{agent_name}_remapping_seed{seed}_{timestamp}"
     csv_path  = Path(results_dir) / f"{run_name}.csv"
     json_path = Path(results_dir) / f"{run_name}_manifest.json"
     ckpt_path = Path(results_dir) / f"{run_name}_checkpoint"
 
-    # REMOVED: success, licked_left, licked_right
+    # FIXED: Header structure updated to map your current environment parameters
     fieldnames = [
-        "episode", "total_reward", "steps", "n_licks", "n_successes",
-        "intra_trial_duration",
+        "episode", "phase", "total_reward", "steps", "success",
+        "n_licks", "n_successes", "intra_trial_duration",
         "critic_loss", "actor_loss", "alpha",
     ]
-    
     csv_rows : list[dict] = []
     start_t   = time.time()
-    total_episodes_with_success  = 0
+    total_episodes_with_success = 0
+
+    # Clean binary split at the halfway mark
+    halfway_point = n_episodes // 2
 
     for ep in range(1, n_episodes + 1):
+        if ep <= halfway_point:
+            current_phase = "mapping"
+            phase_idx = 1.0
+        else:
+            current_phase = "remapping"
+            phase_idx = 2.0
+            
+        # FIXED: Use .unwrapped to securely route phase configurations through wrappers
+        env.unwrapped.set_phase(current_phase)
+
         obs, _   = env.reset(seed=seed + ep)
         ep_reward = 0.0
         ep_metrics: dict = {}
         n_licks   = 0
         done      = False
-        info      = {} 
+        info      = {}
         ep_durations = []
 
         while not done:
@@ -144,17 +153,20 @@ def run_continuous_experiment(
         if end_m:
             ep_metrics.update(end_m)
 
-        # Track if the episode had AT LEAST one success for the final manifest
-        if info.get("n_successes", 0) > 0:
+        # FIXED: Evaluate success criteria based on cumulative completions
+        has_success = int(info.get("n_successes", 0) > 0)
+        if has_success:
             total_episodes_with_success += 1
 
-        # Extract the duration and force it to NaN if it is None
+        # Calculate mean intra-trial duration for this episode; fall back to NaN if none completed
         safe_dur = float(np.mean(ep_durations)) if ep_durations else float("nan")
 
         row = {
             "episode"               : ep,
+            "phase"                 : phase_idx,
             "total_reward"          : round(ep_reward, 4),
-            "steps"                 : info["steps"],
+            "steps"                 : info.get("steps", 0),
+            "success"               : has_success,
             "n_licks"               : n_licks,
             "n_successes"           : info.get("n_successes", 0),
             "intra_trial_duration"  : safe_dur,
@@ -167,16 +179,18 @@ def run_continuous_experiment(
         if verbose and ep % log_every == 0:
             recent = csv_rows[-log_every:]
             avg_r  = np.mean([r["total_reward"] for r in recent])
+            avg_sr = np.mean([r["success"]      for r in recent]) * 100
             lk     = np.mean([r["n_licks"]      for r in recent])
             avg_succ = np.mean([r["n_successes"] for r in recent])
             
             valid_durations = [
                 r["intra_trial_duration"] for r in recent 
-                if isinstance(r["intra_trial_duration"], (int, float)) and not np.isnan(r["intra_trial_duration"])
+                if not np.isnan(r["intra_trial_duration"])
             ]
             avg_dur = np.mean(valid_durations) if valid_durations else float("nan")
-            print(f"  Ep {ep:5d}/{n_episodes} | "
-                  f"avg_R={avg_r:+.3f} | "
+            
+            print(f"  Ep {ep:5d}/{n_episodes} ({current_phase.upper()}) | "
+                  f"avg_R={avg_r:+.3f} | SR={avg_sr:.1f}% | "
                   f"avg_succ={avg_succ:.2f} | avg_dur={avg_dur:.1f} steps")
 
     elapsed = time.time() - start_t
@@ -190,7 +204,6 @@ def run_continuous_experiment(
     except Exception as e:
         print(f"  [warn] checkpoint: {e}")
 
-    # FIXED: Replaced "success" check with "n_successes > 0"
     manifest = {
         "run_name"          : run_name,
         "agent"             : agent_name,
@@ -207,7 +220,7 @@ def run_continuous_experiment(
         "seed"              : seed,
         "config"            : config,
         "final_success_rate": round(total_episodes_with_success / n_episodes, 4),
-        "last_100_success"  : round(np.mean([1 if r["n_successes"] > 0 else 0 for r in csv_rows[-100:]]), 4),
+        "last_100_success"  : round(np.mean([r["success"] for r in csv_rows[-100:]]), 4),
         "elapsed_seconds"   : round(elapsed, 2),
         "csv_path"          : str(csv_path),
         "ckpt_path"         : str(ckpt_path),
@@ -215,24 +228,19 @@ def run_continuous_experiment(
     with open(json_path, "w") as f:
         json.dump(manifest, f, indent=2)
 
-    if verbose:
-        print(f"\n✓ Done in {elapsed:.1f}s | "
-              f"last-100 SR: {manifest['last_100_success']*100:.1f}%")
-        print(f"  CSV -> {csv_path}")
-
     return manifest
 
 def _parse():
     p = argparse.ArgumentParser()
-    p.add_argument("--agent",          default="sac", choices=list(CONTINUOUS_REGISTRY))
+    p.add_argument("--agent",          default="ppo", choices=list(CONTINUOUS_REGISTRY))
     p.add_argument("--episodes",       type=int,   default=3000)
     p.add_argument("--track_length",   type=float, default=120.0)
     p.add_argument("--max_vel",        type=float, default=10.0)
-    p.add_argument("--terminal_width", type=float, default=1.0)
+    p.add_argument("--terminal_width", type=float, default=3.0)
     p.add_argument("--max_steps",      type=int,   default=500)
     p.add_argument("--step_penalty",   type=float, default=-0.005)
-    p.add_argument("--lick_penalty",   type=float, default=-0.005) # Defaulted to 0 for you
-    p.add_argument("--water_reward",   type=float, default=100.0) # Added parser for reward
+    p.add_argument("--lick_penalty",   type=float, default=-0.05) 
+    p.add_argument("--water_reward",   type=float, default=1.0) 
     p.add_argument("--seed",           type=int,   default=42)
     p.add_argument("--results_dir",    default="results")
     p.add_argument("--log_every",      type=int,   default=200)
