@@ -17,6 +17,8 @@ import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
 from matplotlib.collections import LineCollection
 
+
+
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -318,14 +320,13 @@ def plot_continuous_learning(
         save_path = str(plots_dir / "learning_curves.png")
 
     # Set outer figure background to white
-    fig, axes = plt.subplots(4, 1, figsize=(12, 11), facecolor="white", sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(12, 11), facecolor="white", sharex=True)
     fig.suptitle(Path(csv_path).stem if not run_name else run_name, 
                  color="black", fontsize=12, fontweight="bold")
 
     # Darkened line colors to ensure high contrast on a white background
     metrics = [
         ("total_reward", "Episode Reward",          "#0077B6"), # Dark Blue
-        ("success",      "Success Rate (%)",        "#D00000"), # Dark Red
         ("n_licks",      "Licks per Episode",       "#E67E22"), # Burnt Orange
         ("intra_trial_duration", "Intra-Trial Duration (steps)", "#00897B"), # Teal
     ]
@@ -456,13 +457,14 @@ def plot_reward_shaping_diagram(
 if __name__ == "__main__":
     from pathlib import Path
     # 1. Remove the '.csv' from the run_name!
-    run_name = "results\\vpg_remapping_seed42_20260610_160223"    
+    run_name = "sac_remapping_seed42_20260615_150427/telemetry_logs/telemetry_ep_5"    
     # 2. Make the path absolute so it works no matter where you run the script from
     root_dir = Path(__file__).resolve().parents[1]
-    csv_path = root_dir / f"{run_name}.csv"
+    csv_path = root_dir / "results" / f"{run_name}.csv"
 
     # Plots auto-save to: results/plots/{run_name}/learning_curves.png
-    plot_continuous_learning(csv_path, smooth_window=2, run_name=run_name)
+    plot_lick_analysis(save_path=csv_path, run_name=run_name)
+    plot_velocity_profile(save_path=csv_path,  run_name=run_name)
 
     
     # run_name2 = "results\\vpg_cont_seed42_20260609_122931"

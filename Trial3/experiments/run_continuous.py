@@ -4,12 +4,14 @@ from typing import Any
 
 import numpy as np
 import sys
+import torch 
 
+# Ensure these imports match your project structure
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from envs import continuous_linear_track
 from agents import CONTINUOUS_REGISTRY
-import agents.FA as FA  # Assuming FA.py is in the algorithms/ folder
+import agents.FA as FA  
+from stepwise_Telemetry import TelemetryLogger
 
 DEFAULT_CONFIGS = {
     "td3": dict(
@@ -19,16 +21,16 @@ DEFAULT_CONFIGS = {
         learn_start=1_000, device="auto",
     ),
     "sac": dict(
-        hidden_size=256, lr=3e-4, gamma=0.99, tau=0.005,
+        hidden_size=256, lr=3e-4, gamma=0.97, tau=0.005,
         alpha=0.2, auto_entropy=True,
-        buffer_capacity=50_000, batch_size=256,
+        buffer_capacity=500, batch_size=256,
         learn_start=1_000, device="auto",
     ),
     "q_fa": dict(lr=0.01, gamma=0.99, epsilon=0.1, n_features=200),
     "sarsa_fa": dict(lr=0.01, gamma=0.99, epsilon=0.1, n_features=200),
     "sarsa_lambda_fa": dict(lr=0.01, gamma=0.99, epsilon=0.1, lambda_=0, n_features=200),
     "ddpg": dict(hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, gamma=0.99, tau=0.005, expl_noise=0.1, batch_size=256, learn_start=1000),
-    "vpg": dict(hidden_size=256, lr=3e-4, gamma=0.99, use_critic=True), 
+    "vpg": dict(hidden_size=256, lr=3e-4, gamma=0.90, use_critic=True), 
     "ppo": dict(
         hidden_size=256, lr=3e-4, gamma=0.99, lam=0.95,
         clip_ratio=0.2, target_kl=0.015, ppo_epochs=10, 
@@ -40,7 +42,7 @@ def run_continuous_experiment(
     agent_name       : str   = "ppo",
     n_episodes       : int   = 3000,
     track_length     : float = 120.0,
-    max_vel          : float = 10.0,
+    max_vel          : float = 20.0,
     terminal_width   : float = 3.0,
     max_steps        : int   = 500,
     water_reward     : float = 1.0,
@@ -51,7 +53,7 @@ def run_continuous_experiment(
     results_dir      : str   = "results",
     extra_config     : dict | None = None,
     verbose          : bool  = True,
-    log_every        : int   = 200,
+    log_every        : int   = 50,
 ) -> dict[str, Any]:
 
     agent_name = agent_name.lower()
@@ -71,12 +73,7 @@ def run_continuous_experiment(
         wrong_lick_penalty = wrong_lick_penalty,
     )
 
-    is_discrete_fa = agent_name in ["q_fa", "sarsa_fa", "sarsa_lambda_fa"]
-    if is_discrete_fa:
-        env = FA.DiscreteActionWrapper(env, n_vel_bins=5)
-        n_actions = env.action_space.n # type: ignore
-    else:
-        n_actions = 2 
+    n_actions = 2 
 
     assert env.observation_space.shape is not None
     obs_dim = env.observation_space.shape[0]
@@ -85,21 +82,19 @@ def run_continuous_experiment(
     if extra_config:
         config.update(extra_config)
 
-    if is_discrete_fa:
-        agent = CONTINUOUS_REGISTRY[agent_name](obs_dim, n_actions, config)
-    else:
-        agent = CONTINUOUS_REGISTRY[agent_name](
-            obs_dim, n_actions, config, action_space=env.action_space
-        )
+    agent = CONTINUOUS_REGISTRY[agent_name](
+        obs_dim, n_actions, config, action_space=env.action_space
+    )
 
     Path(results_dir).mkdir(parents=True, exist_ok=True)
+    Path("checkpoints").mkdir(parents=True, exist_ok=True)
+    
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     run_name  = f"{agent_name}_remapping_seed{seed}_{timestamp}"
     csv_path  = Path(results_dir) / f"{run_name}.csv"
     json_path = Path(results_dir) / f"{run_name}_manifest.json"
-    ckpt_path = Path(results_dir) / f"{run_name}_checkpoint"
+    ckpt_path = Path("checkpoints") / f"{run_name}_checkpoint.pt"
 
-    # FIXED: Header structure updated to map your current environment parameters
     fieldnames = [
         "episode", "phase", "total_reward", "steps", "success",
         "n_licks", "n_successes", "intra_trial_duration",
@@ -109,9 +104,10 @@ def run_continuous_experiment(
     start_t   = time.time()
     total_episodes_with_success = 0
 
-    # Clean binary split at the halfway mark
-    halfway_point = n_episodes // 2
-
+    halfway_point = n_episodes // 3
+    telemetry_dir = f"./results/{run_name}/telemetry_logs"
+    telemetry = TelemetryLogger(M=halfway_point, R=n_episodes - halfway_point, save_dir=telemetry_dir)
+    
     for ep in range(1, n_episodes + 1):
         if ep <= halfway_point:
             current_phase = "mapping"
@@ -120,10 +116,9 @@ def run_continuous_experiment(
             current_phase = "remapping"
             phase_idx = 2.0
             
-        # FIXED: Use .unwrapped to securely route phase configurations through wrappers
         env.unwrapped.set_phase(current_phase)
-
         obs, _   = env.reset(seed=seed + ep)
+        
         ep_reward = 0.0
         ep_metrics: dict = {}
         n_licks   = 0
@@ -131,34 +126,97 @@ def run_continuous_experiment(
         info      = {}
         ep_durations = []
 
+        is_target_ep = ep in telemetry.target_episodes
+
         while not done:
+            # --- 1. Action Selection (Safe Native Call) ---
+            # ALWAYS use the agent's built-in method to get the valid environment action
             action = agent.select_action(obs, explore=True)
+            value_est = 0.0
+            policy_std = 0.0
+
+            # --- 2. Telemetry Extraction ---
+            if is_target_ep:
+                with torch.no_grad():
+                    obs_tensor = torch.tensor(obs, dtype=torch.float32).to(agent.device)
+                    if obs_tensor.dim() == 1:
+                        obs_tensor = obs_tensor.unsqueeze(0)
+                        
+                    # Safely extract Value (Handles both PPO V(s) and SAC Q(s,a))
+                    if hasattr(agent, 'critic'):
+                        try:
+                            # Try PPO/VPG style: V(s)
+                            v_out = agent.critic(obs_tensor)
+                            # Handle twin-critics (tuple) or single critics
+                            value_est = v_out[0].item() if isinstance(v_out, tuple) else v_out.mean().item()
+                        except Exception:
+                            try:
+                                # Try SAC/TD3 style: Q(s, a)
+                                a_tensor = torch.tensor(action, dtype=torch.float32).to(agent.device).unsqueeze(0)
+                                q_out = agent.critic(obs_tensor, a_tensor)
+                                value_est = q_out[0].item() if isinstance(q_out, tuple) else q_out.mean().item()
+                            except Exception:
+                                value_est = 0.0
+                    
+                    # Safely extract Variance
+                    if hasattr(agent, 'actor'):
+                        try:
+                            actor_out = agent.actor(obs_tensor)
+                            if hasattr(actor_out, 'stddev'):
+                                policy_std = actor_out.stddev.mean().item()
+                            elif isinstance(actor_out, tuple):
+                                # If tuple, the second element is usually log_std or std
+                                std_tensor = actor_out[1]
+                                # Heuristic: if mean is negative, it's likely log_std, so exponentiate it
+                                policy_std = torch.exp(std_tensor).mean().item() if torch.mean(std_tensor) < 0 else std_tensor.mean().item()
+                        except Exception:
+                            policy_std = 0.0
+
+            # --- 3. Environment Step ---
             nobs, r, term, trunc, info = env.step(action)
             done = term or trunc
 
+            # --- 4. Telemetry Logging ---
+            if is_target_ep:
+                telemetry.log_step(
+                    step=info.get("steps", 0),
+                    pos=info.get("pos", 0.0),
+                    vel=info.get("vel", 0.0),
+                    action_vel=action[0],   
+                    action_lick=action[1],  
+                    value_est=value_est,
+                    policy_std=policy_std,
+                    reward=float(r)
+                )
+
+            # --- 5. Standard Metrics ---
+
             if info.get("lick_zone") is not None:
                 n_licks += 1
-
             if info.get("intra_trial_duration") is not None:
                 ep_durations.append(info["intra_trial_duration"])
 
+            # --- 5. Agent Update ---
             m = agent.update(obs, action, r, nobs, done)
             if m: 
                 ep_metrics.update(m)
 
-            obs        = nobs
+            obs = nobs
             ep_reward += float(r)
+
+        # --- END OF WHILE LOOP ---
+        
+        # Save telemetry buffer for this specific episode
+        telemetry.save_episode(ep)
 
         end_m = agent.on_episode_end()
         if end_m:
             ep_metrics.update(end_m)
 
-        # FIXED: Evaluate success criteria based on cumulative completions
         has_success = int(info.get("n_successes", 0) > 0)
         if has_success:
             total_episodes_with_success += 1
 
-        # Calculate mean intra-trial duration for this episode; fall back to NaN if none completed
         safe_dur = float(np.mean(ep_durations)) if ep_durations else float("nan")
 
         row = {
@@ -175,6 +233,9 @@ def run_continuous_experiment(
             "alpha"                 : round(ep_metrics.get("alpha",       float("nan")), 6),
         }
         csv_rows.append(row)
+
+        if ep % 500 == 0:
+            torch.save(agent, f"checkpoints/model_ep{ep}.pt")
 
         if verbose and ep % log_every == 0:
             recent = csv_rows[-log_every:]
@@ -235,15 +296,15 @@ def _parse():
     p.add_argument("--agent",          default="ppo", choices=list(CONTINUOUS_REGISTRY))
     p.add_argument("--episodes",       type=int,   default=3000)
     p.add_argument("--track_length",   type=float, default=120.0)
-    p.add_argument("--max_vel",        type=float, default=10.0)
+    p.add_argument("--max_vel",        type=float, default=20.0) 
     p.add_argument("--terminal_width", type=float, default=3.0)
     p.add_argument("--max_steps",      type=int,   default=500)
     p.add_argument("--step_penalty",   type=float, default=-0.005)
     p.add_argument("--lick_penalty",   type=float, default=-0.05) 
-    p.add_argument("--water_reward",   type=float, default=1.0) 
+    p.add_argument("--water_reward",   type=float, default=10.0) 
     p.add_argument("--seed",           type=int,   default=42)
     p.add_argument("--results_dir",    default="results")
-    p.add_argument("--log_every",      type=int,   default=200)
+    p.add_argument("--log_every",      type=int,   default=50)   
     return p.parse_args()
 
 if __name__ == "__main__":
