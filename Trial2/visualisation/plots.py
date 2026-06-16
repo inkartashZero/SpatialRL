@@ -317,14 +317,14 @@ def plot_continuous_learning(
         save_path = str(plots_dir / "learning_curves.png")
 
     # Set outer figure background to white
-    fig, axes = plt.subplots(4, 1, figsize=(12, 11), facecolor="white", sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(12, 11), facecolor="white", sharex=True)
     fig.suptitle(Path(csv_path).stem if not run_name else run_name, 
                  color="black", fontsize=12, fontweight="bold")
 
     # Darkened line colors to ensure high contrast on a white background
     metrics = [
         ("total_reward", "Episode Reward",          "#0077B6"), # Dark Blue
-        ("success",      "Success Rate (%)",        "#D00000"), # Dark Red
+ 
         ("n_licks",      "Licks per Episode",       "#E67E22"), # Burnt Orange
         ("intra_trial_duration", "Intra-Trial Duration (steps)", "#00897B"), # Teal
     ]
@@ -455,7 +455,7 @@ def plot_reward_shaping_diagram(
 if __name__ == "__main__":
     from pathlib import Path
     # 1. Remove the '.csv' from the run_name!
-    run_name = "results\\sac_cont_seed42_20260608_170448"    
+    run_name = "results\\ppo_cont_seed42_20260610_154018"    
     # 2. Make the path absolute so it works no matter where you run the script from
     root_dir = Path(__file__).resolve().parents[1]
     csv_path = root_dir / f"{run_name}.csv"
@@ -464,19 +464,23 @@ if __name__ == "__main__":
     plot_continuous_learning(csv_path, smooth_window=2, run_name=run_name)
 
     
-    run_name2 = "results\\vpg_cont_seed42_20260609_122931"
+    run_name2 = "results\\ppo_cont_seed42_20260610_144735"
     csv_path2 = root_dir /  f"{run_name2}.csv"
     plot_continuous_learning(csv_path2, smooth_window=2, run_name=run_name2)
 
-    run_name3 = "results\\vpg_cont_seed42_20260609_141826"
+    run_name3 = "results\\td3_cont_seed42_20260608_130714"
     csv_path3 = root_dir / f"{run_name3}.csv"
     plot_continuous_learning(csv_path3, smooth_window=2, run_name=run_name3)
 
+    run_name4 = "results\\td3_cont_seed42_20260608_130714"
+    csv_path4 = root_dir / f"{run_name4}.csv"
+    plot_continuous_learning(csv_path4, smooth_window=2, run_name=run_name4)
+
     # # All functions support this pattern
-    run_name ="Track_Plot"
-    dummy_env = continuous_linear_track.ContinuousLinearTrackEnv()
-    plot_continuous_track(dummy_env, run_name=run_name)
+    # run_name ="Track_Plot"
+    # dummy_env = continuous_linear_track.ContinuousLinearTrackEnv()
+    # plot_continuous_track(dummy_env, run_name=run_name)
     
-    # 2. Test the shaping diagram
-    plot_reward_shaping_diagram(run_name=run_name)
+    # # 2. Test the shaping diagram
+    # plot_reward_shaping_diagram(run_name=run_name)
     

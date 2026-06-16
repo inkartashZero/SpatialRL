@@ -29,7 +29,7 @@ DEFAULT_CONFIGS = {
     "q_fa": dict(lr=0.01, gamma=0.99, epsilon=0.1, n_features=200),
     "sarsa_fa": dict(lr=0.01, gamma=0.99, epsilon=0.1, n_features=200),
     "sarsa_lambda_fa": dict(lr=0.01, gamma=0.99, epsilon=0.1, lambda_=0, n_features=200),
-    "ddpg": dict(hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, gamma=0.99, tau=0.005, expl_noise=0.1, batch_size=256, learn_start=1000),
+    "ddpg": dict(hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, gamma=0.99, tau=0.005, expl_noise=10, batch_size=256, learn_start=1000),
     "vpg": dict(hidden_size=256, lr=3e-4, gamma=0.90, use_critic=True), 
     "ppo": dict(
         hidden_size=256, lr=3e-4, gamma=0.99, lam=0.95,
