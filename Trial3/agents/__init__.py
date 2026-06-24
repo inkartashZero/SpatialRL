@@ -4,7 +4,7 @@ from .FA import QLearningFA, SarsaFA, SarsaLambdaFA
 from .ddpg import DDPGAgent
 from .vpg import VPGAgent
 from .ppo import PPOAgent
-
+from .a2c import A2CAgent
 
 CONTINUOUS_REGISTRY = {
     "td3": TD3Agent,
@@ -15,4 +15,5 @@ CONTINUOUS_REGISTRY = {
     "ddpg": DDPGAgent,
     "vpg": VPGAgent,
     "ppo": PPOAgent,
+    "a2c": A2CAgent,
 }

@@ -456,20 +456,20 @@ def plot_reward_shaping_diagram(
 
 if __name__ == "__main__":
     from pathlib import Path
-    # 1. Remove the '.csv' from the run_name!
-    run_name = "sac_remapping_seed42_20260615_150427/telemetry_logs/telemetry_ep_5"    
-    # 2. Make the path absolute so it works no matter where you run the script from
+    # # 1. Remove the '.csv' from the run_name!
+    # run_name = "sac_remapping_seed42_20260615_150427/telemetry_logs/telemetry_ep_5"    
+    # # 2. Make the path absolute so it works no matter where you run the script from
+   
+    # csv_path = root_dir / "results" / f"{run_name}.csv"
+
+    # # Plots auto-save to: results/plots/{run_name}/learning_curves.png
+    # plot_lick_analysis(save_path=csv_path, run_name=run_name)
+    # plot_velocity_profile(save_path=csv_path,  run_name=run_name)
+
     root_dir = Path(__file__).resolve().parents[1]
-    csv_path = root_dir / "results" / f"{run_name}.csv"
-
-    # Plots auto-save to: results/plots/{run_name}/learning_curves.png
-    plot_lick_analysis(save_path=csv_path, run_name=run_name)
-    plot_velocity_profile(save_path=csv_path,  run_name=run_name)
-
-    
-    # run_name2 = "results\\vpg_cont_seed42_20260609_122931"
-    # csv_path2 = root_dir /  f"{run_name2}.csv"
-    # plot_continuous_learning(csv_path2, smooth_window=2, run_name=run_name2)
+    run_name2 = "results\\a2c_remapping_seed42_20260622_192456"
+    csv_path2 = root_dir /  f"{run_name2}.csv"
+    plot_continuous_learning(csv_path2, smooth_window=2, run_name=run_name2)
 
     # run_name3 = "results\\vpg_cont_seed42_20260609_141826"
     # csv_path3 = root_dir / f"{run_name3}.csv"

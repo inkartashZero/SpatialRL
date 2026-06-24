@@ -17,7 +17,7 @@ DEFAULT_CONFIGS = {
     "td3": dict(
         hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, gamma=0.99,
         tau=0.005, policy_noise=0.2, noise_clip=0.5, policy_delay=2,
-        expl_noise=0.3, buffer_capacity=50_000, batch_size=256,
+        expl_noise=0.3, buffer_capacity=500, batch_size=256,
         learn_start=1_000, device="auto",
     ),
     "sac": dict(
@@ -36,6 +36,14 @@ DEFAULT_CONFIGS = {
         clip_ratio=0.2, target_kl=0.015, ppo_epochs=10, 
         rollout_steps=2048, batch_size=64, device="auto",
     ),
+    "a2c": dict(
+        hidden_size=256, 
+        lr=3e-4, 
+        gamma=0.99,
+        entropy_coef=0.01, 
+        rollout_steps=5, 
+        device="auto"
+    ),
 }
 
 def run_continuous_experiment(
@@ -48,6 +56,7 @@ def run_continuous_experiment(
     water_reward     : float = 1.0,
     step_penalty     : float = -0.005,
     lick_penalty     : float = -0.05,
+    poke_penalty     : float = -0.03,
     wrong_lick_penalty: float = 0.0,
     seed             : int   = 42,
     results_dir      : str   = "results",
