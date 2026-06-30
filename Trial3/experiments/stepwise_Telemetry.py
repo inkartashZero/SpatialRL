@@ -21,7 +21,7 @@ class TelemetryLogger:
         
         print(f"Telemetry active for milestone episodes: {self.target_episodes}")
 
-    def log_step(self, step, pos, vel, action_vel, action_lick, value_est, policy_std, reward):
+    def log_step(self, step, pos, vel, action_vel, action_lick, value_est, policy_std, reward, behaviour):
         """Appends a single timestep's data to the current episode buffer."""
         self.current_ep_data.append({
             "Step": step,
@@ -31,7 +31,8 @@ class TelemetryLogger:
             "Action_Lick_Cmd": round(action_lick, 3),
             "Critic_Value": round(value_est, 4),
             "Policy_StdDev": round(policy_std, 4),
-            "Reward": reward
+            "Reward": reward,
+            "Behaviour": behaviour,
         })
 
     def save_episode(self, episode):

@@ -1,0 +1,1 @@
+episode,phase,total_reward,steps,success,n_licks,n_successes,intra_trial_duration,critic_loss,actor_loss,alpha

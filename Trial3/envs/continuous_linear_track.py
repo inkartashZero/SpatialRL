@@ -27,6 +27,7 @@ class ContinuousLinearTrackEnv(gym.Env):
         water_reward      : float = 1.0,
         step_penalty      : float = -0.005,
         lick_penalty      : float = -0.05,
+        poke_penalty      : float = -0.01,    
         wrong_lick_penalty: float = 0.0,
         render_mode       : str | None = None,
     ):
@@ -40,6 +41,7 @@ class ContinuousLinearTrackEnv(gym.Env):
         self.water_reward    = water_reward
         self.step_penalty    = step_penalty
         self.lick_penalty    = lick_penalty
+        self.poke_penalty    = poke_penalty
         self.wrong_lick_pen  = wrong_lick_penalty
         self.render_mode     = render_mode
         self.phase           = "mapping"
@@ -85,7 +87,7 @@ class ContinuousLinearTrackEnv(gym.Env):
         tactile     = np.array([self._get_tactile()], dtype=np.float32)
         flags       = np.array([float(self._licked_left), float(self._licked_right)], dtype=np.float32)
         
-        return np.concatenate([pos_norm, vel_norm, is_terminal, tactile, flags])
+        return np.concatenate([pos_norm, vel_norm, is_terminal, tactile,flags])
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
@@ -111,7 +113,10 @@ class ContinuousLinearTrackEnv(gym.Env):
     def step(self, action: np.ndarray):
         action  = np.asarray(action, dtype=np.float32)
         vel_cmd = float(np.clip(action[0], -self.max_vel, self.max_vel))
-        do_lick = bool(action[1] > 0.0)
+        lick_cmd = action[1]
+        do_lick = bool(lick_cmd > 0.5)
+        do_poke = bool(lick_cmd > 0.0 and lick_cmd <= 0.5)
+
 
         self._vel  = vel_cmd
         self._pos  = float(np.clip(self._pos + vel_cmd * self.dt, 0.0, self.L))
@@ -119,7 +124,6 @@ class ContinuousLinearTrackEnv(gym.Env):
         self._trajectory.append(self._pos)
 
         reward     = self.step_penalty
-        terminated = False
         lick_zone  = None
         intra_trial_duration_this_step = None
 
@@ -171,7 +175,16 @@ class ContinuousLinearTrackEnv(gym.Env):
                 lick_zone = "body"
                 self._lick_events.append((self._steps, "body"))
                 reward += self.wrong_lick_pen   
+        elif do_poke:
+            reward += self.poke_penalty 
 
+        if do_lick:
+            behavior = "lick"
+        elif do_poke:
+            behavior = "nose_poke"
+        else:
+            behavior = "move"
+            
         truncated = self._steps >= self.max_steps
 
         info = {
@@ -179,6 +192,7 @@ class ContinuousLinearTrackEnv(gym.Env):
             "vel"              : self._vel,
             "licked_left"      : self._licked_left,
             "licked_right"     : self._licked_right,
+            "nose_poke"        : do_poke,
             "lick_zone"        : lick_zone,
             "steps"            : self._steps,
             "n_successes"      : self._n_successes,
@@ -187,10 +201,11 @@ class ContinuousLinearTrackEnv(gym.Env):
             "in_right_zone"    : self._in_right_zone(),
             "trajectory"       : list(self._trajectory),
             "lick_events"      : list(self._lick_events),
+            "behaviour"        : behavior,
         }
 
-        return self._build_obs(), float(reward), terminated, truncated, info
+        return self._build_obs(), float(reward), truncated, info
 
     @property
     def obs_labels(self):
-        return ["pos_norm", "vel_norm", "is_terminal", "tactile", "licked_L", "licked_R"]
+        return ["pos_norm", "vel_norm", "is_terminal", "tactile", "licked_left_flag", "licked_right_flag  "]

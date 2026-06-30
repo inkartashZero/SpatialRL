@@ -100,13 +100,18 @@ def run_continuous_experiment(
     
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     run_name  = f"{agent_name}_remapping_seed{seed}_{timestamp}"
+    
+    # 1. Update this line to include the run_name
+    checkpoint_dir = Path("checkpoints") / run_name
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    
     csv_path  = Path(results_dir) / f"{run_name}.csv"
     json_path = Path(results_dir) / f"{run_name}_manifest.json"
-    ckpt_path = Path("checkpoints") / f"{run_name}_checkpoint.pt"
+    ckpt_path = checkpoint_dir / f"{run_name}_checkpoint.pt"
 
     fieldnames = [
         "episode", "phase", "total_reward", "steps", "success",
-        "n_licks", "n_successes", "intra_trial_duration",
+        "n_licks","n_pokes", "n_successes", "intra_trial_duration",
         "critic_loss", "actor_loss", "alpha",
     ]
     csv_rows : list[dict] = []
@@ -131,6 +136,7 @@ def run_continuous_experiment(
         ep_reward = 0.0
         ep_metrics: dict = {}
         n_licks   = 0
+        n_pokes   = 0
         done      = False
         info      = {}
         ep_durations = []
@@ -182,8 +188,8 @@ def run_continuous_experiment(
                             policy_std = 0.0
 
             # --- 3. Environment Step ---
-            nobs, r, term, trunc, info = env.step(action)
-            done = term or trunc
+            nobs, r, trunc, info = env.step(action)
+            done =  trunc
 
             # --- 4. Telemetry Logging ---
             if is_target_ep:
@@ -195,13 +201,16 @@ def run_continuous_experiment(
                     action_lick=action[1],  
                     value_est=value_est,
                     policy_std=policy_std,
-                    reward=float(r)
+                    reward=float(r),
+                    behaviour=info.get("behaviour", "move"), # Move, Lick, or Poke
                 )
 
             # --- 5. Standard Metrics ---
 
             if info.get("lick_zone") is not None:
                 n_licks += 1
+            if info.get("nose_poke") is not None: 
+                n_pokes += 1
             if info.get("intra_trial_duration") is not None:
                 ep_durations.append(info["intra_trial_duration"])
 
@@ -235,6 +244,7 @@ def run_continuous_experiment(
             "steps"                 : info.get("steps", 0),
             "success"               : has_success,
             "n_licks"               : n_licks,
+            "n_pokes"               : n_pokes,
             "n_successes"           : info.get("n_successes", 0),
             "intra_trial_duration"  : safe_dur,
             "critic_loss"           : round(ep_metrics.get("critic_loss", float("nan")), 6),
@@ -244,7 +254,7 @@ def run_continuous_experiment(
         csv_rows.append(row)
 
         if ep % 500 == 0:
-            torch.save(agent, f"checkpoints/model_ep{ep}.pt")
+            torch.save(agent, checkpoint_dir / f"model_ep{ep}.pt")
 
         if verbose and ep % log_every == 0:
             recent = csv_rows[-log_every:]

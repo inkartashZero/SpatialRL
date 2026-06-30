@@ -1,0 +1,29 @@
+{
+  "run_name": "a2c_remapping_seed42_20260629_163027",
+  "agent": "a2c",
+  "env": "ContinuousLinearTrack",
+  "n_episodes": 200,
+  "track_length": 120.0,
+  "max_vel": 20.0,
+  "terminal_width": 3.0,
+  "max_steps": 500,
+  "water_reward": 10.0,
+  "step_penalty": -0.005,
+  "lick_penalty": -0.05,
+  "wrong_lick_penalty": 0.0,
+  "seed": 42,
+  "config": {
+    "hidden_size": 256,
+    "lr": 0.0003,
+    "gamma": 0.99,
+    "entropy_coef": 0.01,
+    "rollout_steps": 5,
+    "device": "auto",
+    "max_vel": 20.0
+  },
+  "final_success_rate": 0.94,
+  "last_100_success": 1.0,
+  "elapsed_seconds": 80.63,
+  "csv_path": "results\\a2c_remapping_seed42_20260629_163027.csv",
+  "ckpt_path": "checkpoints\\a2c_remapping_seed42_20260629_163027\\a2c_remapping_seed42_20260629_163027_checkpoint.pt"
+}
